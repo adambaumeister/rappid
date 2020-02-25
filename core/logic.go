@@ -64,7 +64,7 @@ func (l *Logic) AddDevice(u string, p string, a string) {
 	l.logger.checkError(err, true)
 
 	if v, ok := d.(*pango.Firewall); ok {
-		l.logger.log(fmt.Sprintf("Added firewall %s\n", a), false)
+		l.logger.log(fmt.Sprintf("Added firewall %s\n", a), true)
 		l.firewalls = append(l.firewalls, v)
 	}
 
@@ -82,23 +82,28 @@ func (l *Logic) ConvertRuleNames(ruleNames []string, dg string, vsys string) {
 		var entries []security.Entry
 
 		for _, fw := range l.firewalls {
-			l.getAllFwPolicies(fw)
+			entries := l.getAllFwPolicies(fw)
+			serviceRules := l.findServiceRules(entries)
+			l.logger.log(fmt.Sprintf("Found %s service only rules", len(serviceRules)), true)
+			err := AppReport(fw)
+			l.logger.checkError(err, true)
 		}
 
 		for _, p := range l.panoramas {
 			l.logger.log(fmt.Sprintf("Searching dg %s", dg), true)
 			entries = l.getAllPanPolicies(p, dg)
+			serviceRules := l.findServiceRules(entries)
+			l.logger.log(fmt.Sprintf("Found %s service only rules", len(serviceRules)), true)
 		}
-
-		l.findServiceRules(entries)
 	}
 }
 
 // Retrieves all of the policy objects at the given vsys in a firewall
-func (l *Logic) getAllFwPolicies(fw *pango.Firewall) {
+func (l *Logic) getAllFwPolicies(fw *pango.Firewall) []security.Entry {
 	entries, err := fw.Policies.Security.GetAll("vsys1")
 	l.logger.checkError(err, true)
 	l.logger.log(fmt.Sprintf("Found %s firewall rules", len(entries)), true)
+	return entries
 }
 
 // Retrieves all of the policy objects at the given DG in Panorama
@@ -109,8 +114,16 @@ func (l *Logic) getAllPanPolicies(p *pango.Panorama, dg string) []security.Entry
 	return entries
 }
 
-func (l *Logic) findServiceRules(e []security.Entry) {
+// Get the rules that are type any and return as a list
+func (l *Logic) findServiceRules(e []security.Entry) []security.Entry {
+	var result []security.Entry
+
 	for _, entry := range e {
 		l.logger.log(fmt.Sprintf("Checking %s %s %s", entry.Name, strings.Join(entry.Services, " - "), strings.Join(entry.Applications, " - ")), true)
+		if entry.Applications[0] == "any" {
+			result = append(result, entry)
+		}
 	}
+
+	return result
 }
