@@ -20,6 +20,11 @@ type TrafficSum struct {
 	AggregateBy []string `xml:"aggregate-by>member"`
 }
 
+type ReportJobResult struct {
+	Status string `xml:"status,attr"`
+	JobID  string `xml:"result>job"`
+}
+
 func AppReport(fw *pango.Firewall) error {
 	params := url.Values{}
 	params.Add("type", "report")
@@ -39,9 +44,21 @@ func AppReport(fw *pango.Firewall) error {
 
 	reportSpec, err := xml.Marshal(report)
 
+	if err != nil {
+		return err
+	}
 	params.Add("cmd", string(reportSpec))
 
-	resp, err := fw.Communicate(params, nil)
+	rjr := ReportJobResult{}
+	resp, err := fw.Communicate(params, &rjr)
+
+	jobParams := url.Values{}
+	fmt.Printf("Jobid: %s %s\n", string(rjr.JobID), string(resp))
+	jobParams.Add("type", "report")
+	jobParams.Add("action", "get")
+	jobParams.Add("job-id", rjr.JobID)
+	resp, err = fw.Communicate(jobParams, nil)
+
 	fmt.Printf(string(resp))
 	return err
 }
